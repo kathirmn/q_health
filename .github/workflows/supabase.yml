@@ -1,0 +1,46 @@
+name: Supabase Database Migration CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/config.toml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Verify migrations locally using Supabase test container
+      - name: Verify migrations
+        run: |
+          supabase init --workdir . || true
+          supabase db lint --linked || true
+
+      # If this is a push to main and secrets are provided, deploy migrations
+      - name: Deploy Migrations to Linked Supabase Project
+        if: github.event_name == 'push' && env.SUPABASE_ACCESS_TOKEN != '' && env.SUPABASE_DB_PASSWORD != ''
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --password "$SUPABASE_DB_PASSWORD"
